@@ -6,18 +6,8 @@ import Navbar from '@/components/Navbar';
 import MemberForm from '@/components/MemberForm';
 import MemberTable from '@/components/MemberTable';
 import { Member, MemberFormData } from '@/types/member';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  getDocs,
-  query,
-  orderBy,
-  Timestamp 
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
 const Dashboard = () => {
@@ -26,28 +16,35 @@ const Dashboard = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    fetchMembers();
-  }, []);
+    if (user) {
+      fetchMembers();
+    }
+  }, [user]);
 
   const fetchMembers = async () => {
     try {
       setLoading(true);
-      const membersQuery = query(
-        collection(db, 'members'),
-        orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(membersQuery);
-      const membersData: Member[] = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        } as Member;
-      });
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const membersData: Member[] = (data || []).map(row => ({
+        id: row.id,
+        fullName: row.full_name,
+        address: row.address,
+        phoneNumber: row.phone_number,
+        cellGroup: row.cell_group,
+        email: row.email,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      }));
+      
       setMembers(membersData);
     } catch (error) {
       console.error('Error fetching members:', error);
@@ -58,22 +55,37 @@ const Dashboard = () => {
   };
 
   const handleAddMember = async (data: MemberFormData) => {
+    if (!user) return;
+    
     try {
       setFormLoading(true);
-      const docRef = await addDoc(collection(db, 'members'), {
-        ...data,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
-      
-      const newMember: Member = {
-        id: docRef.id,
-        ...data,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+      const { data: newMember, error } = await supabase
+        .from('members')
+        .insert({
+          user_id: user.id,
+          full_name: data.fullName,
+          address: data.address,
+          phone_number: data.phoneNumber,
+          cell_group: data.cellGroup,
+          email: data.email,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const memberData: Member = {
+        id: newMember.id,
+        fullName: newMember.full_name,
+        address: newMember.address,
+        phoneNumber: newMember.phone_number,
+        cellGroup: newMember.cell_group,
+        email: newMember.email,
+        createdAt: new Date(newMember.created_at),
+        updatedAt: new Date(newMember.updated_at),
       };
       
-      setMembers(prev => [newMember, ...prev]);
+      setMembers(prev => [memberData, ...prev]);
       setFormOpen(false);
       toast.success('Member added successfully');
     } catch (error) {
@@ -89,11 +101,18 @@ const Dashboard = () => {
     
     try {
       setFormLoading(true);
-      const memberRef = doc(db, 'members', editingMember.id);
-      await updateDoc(memberRef, {
-        ...data,
-        updatedAt: Timestamp.now(),
-      });
+      const { error } = await supabase
+        .from('members')
+        .update({
+          full_name: data.fullName,
+          address: data.address,
+          phone_number: data.phoneNumber,
+          cell_group: data.cellGroup,
+          email: data.email,
+        })
+        .eq('id', editingMember.id);
+
+      if (error) throw error;
       
       setMembers(prev => prev.map(m => 
         m.id === editingMember.id 
@@ -114,7 +133,13 @@ const Dashboard = () => {
 
   const handleDeleteMember = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'members', id));
+      const { error } = await supabase
+        .from('members')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       setMembers(prev => prev.filter(m => m.id !== id));
       toast.success('Member deleted successfully');
     } catch (error) {
