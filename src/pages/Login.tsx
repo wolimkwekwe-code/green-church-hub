@@ -12,7 +12,8 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, user } = useAuth();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,23 +30,46 @@ const Login = () => {
       return;
     }
 
+    if (isSignUp && password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
     try {
-      await signIn(email, password);
-      toast.success('Login successful');
-      navigate('/dashboard');
-    } catch (error: any) {
-      console.error('Login error:', error);
-      if (error.code === 'auth/invalid-credential') {
-        toast.error('Invalid email or password');
-      } else if (error.code === 'auth/user-not-found') {
-        toast.error('No account found with this email');
-      } else if (error.code === 'auth/wrong-password') {
-        toast.error('Incorrect password');
-      } else if (error.code === 'auth/too-many-requests') {
-        toast.error('Too many failed attempts. Please try again later');
+      if (isSignUp) {
+        await signUp(email, password);
+        toast.success('Account created successfully!');
+        navigate('/dashboard');
       } else {
-        toast.error('Login failed. Please check your credentials');
+        await signIn(email, password);
+        toast.success('Login successful');
+        navigate('/dashboard');
+      }
+    } catch (error: any) {
+      console.error('Auth error:', error);
+      if (isSignUp) {
+        if (error.code === 'auth/email-already-in-use') {
+          toast.error('An account with this email already exists');
+        } else if (error.code === 'auth/weak-password') {
+          toast.error('Password is too weak');
+        } else if (error.code === 'auth/invalid-email') {
+          toast.error('Invalid email address');
+        } else {
+          toast.error('Registration failed. Please try again');
+        }
+      } else {
+        if (error.code === 'auth/invalid-credential') {
+          toast.error('Invalid email or password');
+        } else if (error.code === 'auth/user-not-found') {
+          toast.error('No account found with this email');
+        } else if (error.code === 'auth/wrong-password') {
+          toast.error('Incorrect password');
+        } else if (error.code === 'auth/too-many-requests') {
+          toast.error('Too many failed attempts. Please try again later');
+        } else {
+          toast.error('Login failed. Please check your credentials');
+        }
       }
     } finally {
       setLoading(false);
@@ -59,9 +83,14 @@ const Login = () => {
           <div className="mx-auto rounded-xl bg-primary p-3">
             <Church className="h-10 w-10 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl">Welcome Back</CardTitle>
+          <CardTitle className="text-2xl">
+            {isSignUp ? 'Create Account' : 'Welcome Back'}
+          </CardTitle>
           <CardDescription>
-            Sign in to access the Church Membership Database
+            {isSignUp 
+              ? 'Register to access the Church Membership Database'
+              : 'Sign in to access the Church Membership Database'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -95,9 +124,25 @@ const Login = () => {
               className="w-full"
               disabled={loading}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading 
+                ? (isSignUp ? 'Creating account...' : 'Signing in...') 
+                : (isSignUp ? 'Create Account' : 'Sign In')
+              }
             </Button>
           </form>
+          <div className="mt-4 text-center text-sm">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-primary hover:underline"
+              disabled={loading}
+            >
+              {isSignUp 
+                ? 'Already have an account? Sign in' 
+                : "Don't have an account? Sign up"
+              }
+            </button>
+          </div>
         </CardContent>
       </Card>
     </div>
